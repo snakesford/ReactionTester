@@ -1,0 +1,94 @@
+body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0f1115;
+      color: white;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 24px;
+      gap: 18px;
+    }
+    #game {
+      width: min(760px, 94vw);
+      height: 360px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      font-size: clamp(20px, 3vw, 32px);
+      text-align: center;
+      user-select: none;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      background: #2b2f3a;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      padding: 12px;
+    }
+    #sub {
+      font-size: 16px;
+      opacity: 0.8;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    .panel {
+      width: min(760px, 94vw);
+      background: #191c23;
+      border: 1px solid #2a2f3b;
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pill {
+      background: #232736;
+      border: 1px solid #2f3446;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    #attempts {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    #leaderboard {
+      margin-top: 10px;
+      display: grid;
+      gap: 6px;
+      font-size: 15px;
+    }
+
+    .lb-item {
+      display: flex;
+      justify-content: space-between;
+      background: #222636;
+      border: 1px solid #2f3446;
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+
+    button {
+      background: #2a90ff;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:active { transform: translateY(1px); }
+
+    .muted { opacity: 0.7; font-size: 14px; }
