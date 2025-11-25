@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reaction Time Tester - Best of 5 (Seeded)</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0f1115;
+      color: white;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 24px;
+      gap: 18px;
+    }
+    #game {
+      width: min(760px, 94vw);
+      height: 360px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      font-size: clamp(20px, 3vw, 32px);
+      text-align: center;
+      user-select: none;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      background: #2b2f3a;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      padding: 12px;
+    }
+    #sub {
+      font-size: 16px;
+      opacity: 0.8;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    .panel {
+      width: min(760px, 94vw);
+      background: #191c23;
+      border: 1px solid #2a2f3b;
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pill {
+      background: #232736;
+      border: 1px solid #2f3446;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    #attempts {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    #leaderboard {
+      margin-top: 10px;
+      display: grid;
+      gap: 6px;
+      font-size: 15px;
+    }
+
+    .lb-item {
+      display: flex;
+      justify-content: space-between;
+      background: #222636;
+      border: 1px solid #2f3446;
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+
+    button {
+      background: #2a90ff;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:active { transform: translateY(1px); }
+
+    .muted { opacity: 0.7; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div id="game">
+    <div>
+      <div id="text">Click to start Run (5 tries)</div>
+      <div id="sub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="pill" id="runStatus">Run: 0 / 5</div>
+      <div class="pill" id="lastTime">Last: —</div>
+      <div class="pill" id="avgTime">Average: —</div>
+      <div class="pill" id="seedDisplay">Seed: —</div>
+      <button id="copyLink">Copy share link</button>
+    </div>
+    <div id="attempts" class="muted">Attempts: —</div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div style="font-weight:700;">Leaderboard (Top 5 Best-of-5 Averages)</div>
+      <button id="clearLB">Clear</button>
+    </div>
+    <div id="leaderboard" class="muted">No scores yet.</div>
+  </div>
+
+<script>
+  const game = document.getElementById("game");
+  const text = document.getElementById("text");
+  const sub  = document.getElementById("sub");
+
+  const runStatusEl = document.getElementById("runStatus");
+  const lastTimeEl  = document.getElementById("lastTime");
+  const avgTimeEl   = document.getElementById("avgTime");
+  const attemptsEl  = document.getElementById("attempts");
+  const leaderboardEl = document.getElementById("leaderboard");
+  const clearLBBtn = document.getElementById("clearLB");
+  const copyLinkBtn = document.getElementById("copyLink");
+  const seedDisplayEl = document.getElementById("seedDisplay");
+
+  let state = "idle"; // idle -> waiting -> ready -> result
+  let timerId = null;
+  let startTime = 0;
+
+  // Best-of-5 tracking
+  let attempts = [];
+  const RUN_SIZE = 5;
+
+  // ----- Seeded RNG (shareable) -----
+  function hashStringToUint32(str) {
+    // FNV-1a-ish simple hash
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function mulberry32(seed) {
+    return function() {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randomSeedString() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  const params = new URLSearchParams(location.search);
+  let seedStr = params.get("seed");
+
+  if (!seedStr) {
+    seedStr = randomSeedString();
+    params.set("seed", seedStr);
+    history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+  }
+
+  seedDisplayEl.textContent = `Seed: ${seedStr}`;
+
+  const rng = mulberry32(hashStringToUint32(seedStr));
+
+  function seededDelayMs() {
+    // deterministic delay range 1.0s–3.5s
+    return 1000 + rng() * 2500;
+  }
+
+  copyLinkBtn.addEventListener("click", async () => {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      copyLinkBtn.textContent = "Copied!";
+      setTimeout(() => (copyLinkBtn.textContent = "Copy share link"), 1200);
+    } catch {
+      alert("Couldn’t copy. Here’s the link:\n" + url);
+    }
+  });
+
+  // ----- Leaderboard helpers -----
+  const LB_KEY = "reaction_bestof5_leaderboard_v1";
+
+  function loadLeaderboard() {
+    try {
+      return JSON.parse(localStorage.getItem(LB_KEY)) || [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLeaderboard(lb) {
+    localStorage.setItem(LB_KEY, JSON.stringify(lb));
+  }
+
+  function renderLeaderboard() {
+    const lb = loadLeaderboard();
+    if (lb.length === 0) {
+      leaderboardEl.textContent = "No scores yet.";
+      leaderboardEl.classList.add("muted");
+      return;
+    }
+
+    leaderboardEl.classList.remove("muted");
+    leaderboardEl.innerHTML = lb
+      .slice(0,5)
+      .map((s, i) => `
+        <div class="lb-item">
+          <div>#${i+1} — ${s.name}</div>
+          <div>${s.avg} ms</div>
+        </div>
+      `).join("");
+  }
+
+  function addScoreToLeaderboard(name, avg) {
+    const lb = loadLeaderboard();
+    lb.push({ name, avg, date: Date.now(), seed: seedStr });
+    lb.sort((a,b) => a.avg - b.avg);
+    saveLeaderboard(lb.slice(0, 20));
+    renderLeaderboard();
+  }
+
+  clearLBBtn.addEventListener("click", () => {
+    localStorage.removeItem(LB_KEY);
+    renderLeaderboard();
+  });
+
+  // ----- UI helpers -----
+  function updateRunUI() {
+    runStatusEl.textContent = `Run: ${attempts.length} / ${RUN_SIZE}`;
+    lastTimeEl.textContent  = `Last: ${attempts.length ? attempts[attempts.length-1] + " ms" : "—"}`;
+
+    if (attempts.length) {
+      const avg = Math.round(attempts.reduce((a,b)=>a+b,0) / attempts.length);
+      avgTimeEl.textContent = `Average: ${avg} ms`;
+      attemptsEl.textContent = `Attempts: ${attempts.join(", ")} ms`;
+    } else {
+      avgTimeEl.textContent = "Average: —";
+      attemptsEl.textContent = "Attempts: —";
+    }
+  }
+
+  function resetRun() {
+    attempts = [];
+    updateRunUI();
+  }
+
+  function setState(newState) {
+    state = newState;
+
+    if (state === "idle") {
+      game.style.background = "#2b2f3a";
+      text.textContent = attempts.length === 0
+        ? "Click to start Run (5 tries)"
+        : "Click to continue";
+      sub.textContent = attempts.length
+        ? "Complete the 5 tries for an average."
+        : "";
+    }
+
+    if (state === "waiting") {
+      game.style.background = "#a13a3a";
+      text.textContent = "Wait for green...";
+      sub.textContent = "Don’t click early!";
+
+      const delay = seededDelayMs();  // <-- seeded!
+      timerId = setTimeout(() => setState("ready"), delay);
+    }
+
+    if (state === "ready") {
+      game.style.background = "#2f9e44";
+      text.textContent = "CLICK!";
+      sub.textContent = "";
+      startTime = performance.now();
+    }
+
+    if (state === "result") {
+      game.style.background = "#2b2f3a";
+      sub.textContent = attempts.length < RUN_SIZE
+        ? "Click to start next try"
+        : "Run complete! Click to start a new run.";
+    }
+  }
+
+  function finishRun() {
+    const avg = Math.round(attempts.reduce((a,b)=>a+b,0) / RUN_SIZE);
+    text.textContent = `Run avg: ${avg} ms`;
+    sub.textContent = "Nice. Saving to leaderboard…";
+
+    const name = (prompt("Name for leaderboard?", "Player") || "Player")
+      .trim()
+      .slice(0, 16);
+
+    addScoreToLeaderboard(name || "Player", avg);
+
+    setState("result");
+  }
+
+  game.addEventListener("click", () => {
+    if (state === "idle") {
+      setState("waiting");
+      return;
+    }
+
+    if (state === "waiting") {
+      clearTimeout(timerId);
+      timerId = null;
+
+      text.textContent = "Too soon 😤";
+      sub.textContent = "Run reset. Click to start over.";
+      resetRun();
+      setState("idle");
+      return;
+    }
+
+    if (state === "ready") {
+      const reaction = Math.round(performance.now() - startTime);
+      attempts.push(reaction);
+      updateRunUI();
+
+      if (attempts.length === RUN_SIZE) {
+        finishRun();
+      } else {
+        text.textContent = `${reaction} ms`;
+        setState("result");
+      }
+      return;
+    }
+
+    if (state === "result") {
+      if (attempts.length === RUN_SIZE) {
+        resetRun();
+      }
+      setState("waiting");
+      return;
+    }
+  });
+
+  // init
+  updateRunUI();
+  renderLeaderboard();
+  setState("idle");
+</script>
+
+</body>
+</html>
